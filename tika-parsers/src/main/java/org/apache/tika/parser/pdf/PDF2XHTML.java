@@ -16,6 +16,19 @@
  */
 package org.apache.tika.parser.pdf;
 
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.Writer;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
@@ -38,25 +51,13 @@ import org.apache.tika.exception.TikaException;
 import org.apache.tika.extractor.EmbeddedDocumentUtil;
 import org.apache.tika.io.TikaInputStream;
 import org.apache.tika.metadata.Metadata;
+import org.apache.tika.metadata.Property;
 import org.apache.tika.metadata.TikaCoreProperties;
 import org.apache.tika.parser.ParseContext;
 import org.apache.tika.sax.EmbeddedContentHandler;
 import org.xml.sax.ContentHandler;
 import org.xml.sax.SAXException;
 import org.xml.sax.helpers.AttributesImpl;
-
-import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.Writer;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 /**
  * Utility class that overrides the {@link PDFTextStripper} functionality
@@ -89,8 +90,8 @@ class PDF2XHTML extends AbstractPDF2XHTML {
      */
     private Map<COSStream, Integer> processedInlineImages = new HashMap<>();
     private int inlineImageCounter = 0;
-    private PDF2XHTML(PDDocument document, ContentHandler handler, ParseContext context, Metadata metadata,
-                      PDFParserConfig config)
+    private PDF2XHTML(final PDDocument document, final ContentHandler handler, final ParseContext context, final Metadata metadata,
+                      final PDFParserConfig config)
             throws IOException {
         super(document, handler, context, metadata, config);
     }
@@ -106,8 +107,8 @@ class PDF2XHTML extends AbstractPDF2XHTML {
      * @throws TikaException if there was an exception outside of per page processing
      */
     public static void process(
-            PDDocument document, ContentHandler handler, ParseContext context, Metadata metadata,
-            PDFParserConfig config)
+            final PDDocument document, final ContentHandler handler, final ParseContext context, final Metadata metadata,
+            final PDFParserConfig config)
             throws SAXException, TikaException {
         PDF2XHTML pdf2XHTML = null;
         try {
@@ -123,7 +124,7 @@ class PDF2XHTML extends AbstractPDF2XHTML {
 
             pdf2XHTML.writeText(document, new Writer() {
                 @Override
-                public void write(char[] cbuf, int off, int len) {
+                public void write(final char[] cbuf, final int off, final int len) {
                 }
 
                 @Override
@@ -148,7 +149,7 @@ class PDF2XHTML extends AbstractPDF2XHTML {
     }
 
     @Override
-    public void processPage(PDPage page) throws IOException {
+    public void processPage(final PDPage page) throws IOException {
         try {
             super.processPage(page);
         } catch (IOException e) {
@@ -157,11 +158,11 @@ class PDF2XHTML extends AbstractPDF2XHTML {
     }
 
     @Override
-    protected void endPage(PDPage page) throws IOException {
+    protected void endPage(final PDPage page) throws IOException {
         try {
             writeParagraphEnd();
             try {
-                extractImages(page.getResources(), new HashSet<COSBase>());
+                extractImages(page.getResources(), new HashSet<COSBase>(), getCurrentPageNo());
             } catch (IOException e) {
                 handleCatchableIOE(e);
             }
@@ -173,7 +174,7 @@ class PDF2XHTML extends AbstractPDF2XHTML {
         }
     }
 
-    private void extractImages(PDResources resources, Set<COSBase> seenThisPage) throws SAXException, IOException {
+    private void extractImages(final PDResources resources, final Set<COSBase> seenThisPage, final int pageNum) throws SAXException, IOException {
         if (resources == null || config.getExtractInlineImages() == false) {
             return;
         }
@@ -202,7 +203,7 @@ class PDF2XHTML extends AbstractPDF2XHTML {
             seenThisPage.add(cosStream);
 
             if (object instanceof PDFormXObject) {
-                extractImages(((PDFormXObject) object).getResources(), seenThisPage);
+                extractImages(((PDFormXObject) object).getResources(), seenThisPage, pageNum);
             } else if (object instanceof PDImageXObject) {
 
                 PDImageXObject image = (PDImageXObject) object;
@@ -264,6 +265,7 @@ class PDF2XHTML extends AbstractPDF2XHTML {
                             continue;
                         }
                         try (InputStream embeddedIs = TikaInputStream.get(buffer.toByteArray())) {
+                            embeddedMetadata.set(Property.externalInteger("PAGE_NUMBER"), pageNum);
                             embeddedDocumentExtractor.parseEmbedded(
                                     embeddedIs,
                                     new EmbeddedContentHandler(xhtml),
@@ -278,7 +280,7 @@ class PDF2XHTML extends AbstractPDF2XHTML {
     }
 
     //nearly directly copied from PDFBox ExtractImages
-    private void writeToBuffer(PDImageXObject pdImage, String suffix, OutputStream out)
+    private void writeToBuffer(final PDImageXObject pdImage, final String suffix, final OutputStream out)
             throws IOException {
 
         BufferedImage image = pdImage.getImage();
@@ -333,7 +335,7 @@ class PDF2XHTML extends AbstractPDF2XHTML {
     }
 
     @Override
-    protected void writeString(String text) throws IOException {
+    protected void writeString(final String text) throws IOException {
         try {
             xhtml.characters(text);
         } catch (SAXException e) {
@@ -343,7 +345,7 @@ class PDF2XHTML extends AbstractPDF2XHTML {
     }
 
     @Override
-    protected void writeCharacters(TextPosition text) throws IOException {
+    protected void writeCharacters(final TextPosition text) throws IOException {
         try {
             xhtml.characters(text.getUnicode());
         } catch (SAXException e) {
@@ -388,7 +390,7 @@ class PDF2XHTML extends AbstractPDF2XHTML {
         }
 
         @Override
-        protected void processTextPosition(TextPosition text) {
+        protected void processTextPosition(final TextPosition text) {
             Matrix m = text.getTextMatrix();
             m.concatenate(text.getFont().getFontMatrix());
             int angle = (int) Math.round(Math.toDegrees(Math.atan2(m.getShearY(), m.getScaleY())));
@@ -399,22 +401,22 @@ class PDF2XHTML extends AbstractPDF2XHTML {
 
     private static class AngleDetectingPDF2XHTML extends PDF2XHTML {
 
-        private AngleDetectingPDF2XHTML(PDDocument document, ContentHandler handler, ParseContext context, Metadata metadata, PDFParserConfig config) throws IOException {
+        private AngleDetectingPDF2XHTML(final PDDocument document, final ContentHandler handler, final ParseContext context, final Metadata metadata, final PDFParserConfig config) throws IOException {
             super(document, handler, context, metadata, config);
         }
 
         @Override
-        protected void startPage(PDPage page) throws IOException {
+        protected void startPage(final PDPage page) throws IOException {
             //no-op
         }
 
         @Override
-        protected void endPage(PDPage page) throws IOException {
+        protected void endPage(final PDPage page) throws IOException {
             //no-op
         }
 
         @Override
-        public void processPage(PDPage page) throws IOException {
+        public void processPage(final PDPage page) throws IOException {
             try {
                 super.startPage(page);
                 detectAnglesAndProcessPage(page);
@@ -425,7 +427,7 @@ class PDF2XHTML extends AbstractPDF2XHTML {
             }
         }
 
-        private void detectAnglesAndProcessPage(PDPage page) throws IOException {
+        private void detectAnglesAndProcessPage(final PDPage page) throws IOException {
             //copied and pasted from https://issues.apache.org/jira/secure/attachment/12947452/ExtractAngledText.java
             //PDFBOX-4371
             AngleCollector angleCollector = new AngleCollector(); // alternatively, reset angles
@@ -464,7 +466,7 @@ class PDF2XHTML extends AbstractPDF2XHTML {
         }
 
         @Override
-        protected void processTextPosition(TextPosition text) {
+        protected void processTextPosition(final TextPosition text) {
             Matrix m = text.getTextMatrix();
             m.concatenate(text.getFont().getFontMatrix());
             int angle = (int) Math.round(Math.toDegrees(Math.atan2(m.getShearY(), m.getScaleY())));
